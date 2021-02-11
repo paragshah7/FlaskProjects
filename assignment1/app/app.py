@@ -10,20 +10,18 @@ from itsdangerous import (TimedJSONWebSignatureSerializer
                           as Serializer, BadSignature, SignatureExpired)
 from flask_bcrypt import Bcrypt
 from datetime import datetime
-from sqlalchemy.dialects.postgresql import UUID
-# from sqlalchemy_utils import UUIDType
 import uuid
-import sqlalchemy
-from flask_migrate import Migrate
+import re
+import config
+# from flask_migrate import Migrate
 
 
 # initialization
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'CSYE6225 Big Secret Key to create a webapp'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
-# app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://postgres:admin123@localhost/webapp"
-app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = config.SECRET_KEY
+app.config['SQLALCHEMY_DATABASE_URI'] = config.SQLALCHEMY_DATABASE_URI
+app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = config.SQLALCHEMY_COMMIT_ON_TEARDOWN
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = config.SQLALCHEMY_TRACK_MODIFICATIONS
 
 # extensions
 db = SQLAlchemy(app)
@@ -80,16 +78,31 @@ def verify_password(username, password):
     return True
 
 
+def validate_password(password):
+    reg = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!#%*?&]{8,25}$"
+    pattern = re.compile(reg)
+    match = re.search(pattern, password)
+
+    if match:
+        return True
+    else:
+        return False
+
+
 @app.route('/v1/user', methods=['POST'])
 def new_user():
     username = request.json.get('username')
     password = request.json.get('password')
     first_name = request.json.get('first_name')
     last_name = request.json.get('last_name')
-    if username is None or password is None:
-        abort(400)    # missing arguments
+
+    if username is None or password is None or first_name is None or last_name is None:
+        return "Please enter username, password, first_name and last_name", 400     # missing arguments
     if User.query.filter_by(username=username).first() is not None:
-        abort(400)    # existing user
+        return "Username exists. Please use a different username", 400       # existing user
+    if not validate_password(password):
+        return "Please enter a strong password. Follow NIST guidelines", 400
+
     user = User(username=username, first_name=first_name,
                 last_name=last_name)
     user.hash_password(password)
@@ -130,6 +143,8 @@ def auth_api():
         if request.json.get('last_name') is not None:
             g.user.last_name = request.json.get('last_name')
         if request.json.get('password') is not None:
+            if not validate_password(request.json.get('password')):
+                return "Please enter a strong password. Follow NIST guidelines", 400
             password = request.json.get('password')
             g.user.hash_password(password)
         g.user.account_updated = str(datetime.now())
@@ -157,4 +172,5 @@ if __name__ == '__main__':
 
 # Test Body
 # POST = {"username":"parag3@gmail.com","password":"python3", "first_name":"parag3", "last_name":"shah3"}
-# PUT = {"password":"python3", "first_name":"parag3", "last_name":"shah3"}
+# PUT = Authenticated --> {"password":"python3", "first_name":"parag3", "last_name":"shah3"}
+# GET = Authenticated
