@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-"""https://blog.miguelgrinberg.com/post/restful-authentication-with-flask"""
 
 import os
 from flask import Flask, abort, request, jsonify, g, url_for
@@ -15,17 +14,21 @@ from sqlalchemy.dialects.postgresql import UUID
 # from sqlalchemy_utils import UUIDType
 import uuid
 import sqlalchemy
+from flask_migrate import Migrate
+
 
 # initialization
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'the quick brown fox jumps over the lazy dog'
+app.config['SECRET_KEY'] = 'CSYE6225 Big Secret Key to create a webapp'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
+# app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://postgres:admin123@localhost/webapp"
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # extensions
 db = SQLAlchemy(app)
 auth = HTTPBasicAuth()
+# migrate = Migrate(app, db)
 
 
 # SQLite Database
@@ -34,12 +37,11 @@ class User(db.Model):
 
     id = db.Column('id', db.Text(length=36), default=lambda: str(
         uuid.uuid4()), primary_key=True)
-    # id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(256), index=True,
                          nullable=False, unique=True)
     password_hash = db.Column(db.String(64), nullable=False)
-    first_name = db.Column(db.String(64))
-    last_name = db.Column(db.String(64))
+    first_name = db.Column(db.String(64), nullable=False)
+    last_name = db.Column(db.String(64), nullable=False)
     account_created = db.Column(db.String, index=True, default=datetime.now)
     account_updated = db.Column(db.String, default=datetime.now)
 
@@ -54,9 +56,9 @@ class User(db.Model):
 
     @staticmethod
     def verify_auth_token(token):
-        s = Serializer(app.config['SECRET_KEY'])
+        serial = Serializer(app.config['SECRET_KEY'])
         try:
-            data = s.loads(token)
+            data = serial.loads(token)
         except SignatureExpired:
             return None    # valid token, but expired
         except BadSignature:
@@ -66,12 +68,12 @@ class User(db.Model):
 
 
 @auth.verify_password
-def verify_password(username_or_token, password):
+def verify_password(username, password):
     # first try to authenticate by token
-    user = User.verify_auth_token(username_or_token)
+    user = User.verify_auth_token(username)
     if not user:
         # try to authenticate with username/password
-        user = User.query.filter_by(username=username_or_token).first()
+        user = User.query.filter_by(username=username).first()
         if not user or not user.verify_password(password):
             return False
     g.user = user
@@ -103,8 +105,6 @@ def new_user():
     })
     response.status_code = 201
     return response
-    # return (jsonify({'first_name': user.first_name, 'last_name': user.last_name}), 201,
-    #         {'Location': url_for('get_user', id=user.id, _external=True)})
 
 
 @app.route('/v1/user/self', methods=['GET', 'PUT'])
@@ -148,7 +148,6 @@ def auth_api():
         })
         response.status_code = 204
         return response
-
 
 
 if __name__ == '__main__':

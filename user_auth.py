@@ -1,5 +1,8 @@
 #!/usr/bin/env python
-"""https://blog.miguelgrinberg.com/post/restful-authentication-with-flask"""
+"""
+https://blog.miguelgrinberg.com/post/restful-authentication-with-flask
+https://scotch.io/tutorials/build-a-restful-api-with-flask-the-tdd-way
+"""
 
 import os
 from flask import Flask, abort, request, jsonify, g, url_for
