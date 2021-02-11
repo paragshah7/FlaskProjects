@@ -11,15 +11,17 @@ from itsdangerous import (TimedJSONWebSignatureSerializer
                           as Serializer, BadSignature, SignatureExpired)
 from flask_bcrypt import Bcrypt
 from datetime import datetime
-# from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID
 # from sqlalchemy_utils import UUIDType
 import uuid
+import sqlalchemy
 
 # initialization
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'the quick brown fox jumps over the lazy dog'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # extensions
 db = SQLAlchemy(app)
@@ -30,7 +32,9 @@ auth = HTTPBasicAuth()
 class User(db.Model):
     __tablename__ = 'users'
 
-    id = db.Column(db.String, name="uuid", primary_key=True, default=str(uuid.uuid4()))
+    id = db.Column('id', db.Text(length=36), default=lambda: str(
+        uuid.uuid4()), primary_key=True)
+    # id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(256), index=True,
                          nullable=False, unique=True)
     password_hash = db.Column(db.String(64), nullable=False)
@@ -40,11 +44,9 @@ class User(db.Model):
     account_updated = db.Column(db.String, default=datetime.now)
 
     def hash_password(self, password):
-        # self.password_hash = pwd_context.encrypt(password)
         self.password_hash = Bcrypt().generate_password_hash(password).decode()
 
     def verify_password(self, password):
-        # return pwd_context.verify(password, self.password_hash)
         return Bcrypt().check_password_hash(self.password_hash, password)
 
     def __repr__(self):
@@ -59,7 +61,7 @@ class User(db.Model):
             return None    # valid token, but expired
         except BadSignature:
             return None    # invalid token
-        user = User.query.get(data['id'])
+        user = User.query.get(data['username'])
         return user
 
 
@@ -95,6 +97,7 @@ def new_user():
         'id': user.id,
         'first_name': user.first_name,
         'last_name': user.last_name,
+        'username': user.username,
         'account_created': user.account_created,
         'account_updated': user.account_updated
     })
@@ -112,6 +115,7 @@ def auth_api():
             'id': g.user.id,
             'first_name': g.user.first_name,
             'last_name': g.user.last_name,
+            'username': g.user.username,
             'account_created': g.user.account_created,
             'account_updated': g.user.account_updated,
         })
@@ -119,12 +123,19 @@ def auth_api():
         return response
     
     if request.method == "PUT":
-        g.user.first_name = request.json.get('first_name')
-        g.user.last_name = request.json.get('last_name')
-        password = request.json.get('password')
-        g.user.hash_password(password)
+        if request.json.get('username') is not None:
+            return "Cannot modify username. Please supply first_name, last_name or password", 400
+        if request.json.get('first_name') is not None:
+            g.user.first_name = request.json.get('first_name')
+        if request.json.get('last_name') is not None:
+            g.user.last_name = request.json.get('last_name')
+        if request.json.get('password') is not None:
+            password = request.json.get('password')
+            g.user.hash_password(password)
         g.user.account_updated = str(datetime.now())
-        print(str(datetime.now()))
+        print(request.json)
+        print(request.json.get('username'))
+        print(request.json.get('username') is not None)
         db.session.add(g.user)
         db.session.commit()
         
@@ -147,4 +158,4 @@ if __name__ == '__main__':
 
 # Test Body
 # POST = {"username":"parag3@gmail.com","password":"python3", "first_name":"parag3", "last_name":"shah3"}
-# PUT = 
+# PUT = {"password":"python3", "first_name":"parag3", "last_name":"shah3"}
