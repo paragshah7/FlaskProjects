@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+# /usr/bin/env python
 
 import os
 from flask import Flask, abort, request, jsonify, g, url_for
@@ -12,9 +12,9 @@ from flask_bcrypt import Bcrypt
 from datetime import datetime
 import uuid
 import re
+from flask_marshmallow import Marshmallow
 import config
 # from flask_migrate import Migrate
-
 
 # initialization
 app = Flask(__name__)
@@ -26,6 +26,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = config.SQLALCHEMY_TRACK_MODIFICAT
 # extensions
 db = SQLAlchemy(app)
 auth = HTTPBasicAuth()
+ma = Marshmallow(app)
 # migrate = Migrate(app, db)
 
 
@@ -63,6 +64,45 @@ class User(db.Model):
             return None    # invalid token
         user = User.query.get(data['username'])
         return user
+
+
+# books_list = [
+#     {
+#         "id": "d6193106-a192-46db-aae9-f151004ee453",
+#         "title": "Computer Networks",
+#         "author": "Andrew S. Tanenbaum",
+#         "isbn": "978-0132126953",
+#         "published_date": "May, 2020"
+#         # "book_created": "2016-08-29T09:12:33.001Z",
+#         # "user_id": "d290f1ee-6c54-4b01-90e6-d701748f0851"
+#     }
+# ]
+
+class Book(db.Model):
+    __tablename__ = 'books'
+
+    id = db.Column('id', db.Text(length=36), default=lambda: str(
+        uuid.uuid4()), primary_key=True)
+    title = db.Column(db.String(256), nullable=False)
+    author = db.Column(db.String(256), nullable=False)
+    isbn = db.Column(db.String(64), nullable=False)
+    published_date = db.Column(db.String(256), nullable=False)
+    book_created = db.Column(db.String, default=datetime.now)
+    user_id = db.Column(db.String(64), nullable=False)
+
+    def __repr__(self):
+        return '<Book {}>'.format(self.title)
+
+
+class BookSchema(ma.Schema):
+    class Meta:
+        fields = ("id", "title", "author", "isbn",
+                  "published_date", "book_created", "user_id")
+        model = Book
+
+
+book_schema = BookSchema()
+books_schema = BookSchema(many=True)
 
 
 @auth.verify_password
@@ -165,12 +205,75 @@ def auth_api():
         return response
 
 
+@app.route('/books', methods=['GET'])
+def get_books():
+    all_books = Book.query.all()
+    result = books_schema.dump(all_books)
+    return jsonify(result)
+
+
+@app.route("/books/<id>", methods=["GET"])
+@auth.login_required
+def book_detail(id):
+    book = Book.query.get(id)
+    return book_schema.jsonify(book)
+
+
+@app.route("/books/<id>", methods=["DELETE"])
+@auth.login_required
+def book_delete(id):
+    book = Book.query.get(id)
+    if book is None:
+        return 'Not found', 404
+    else:
+        print('**********      --> ', book)
+        db.session.delete(book)
+        db.session.commit()
+        return book_schema.jsonify(book)
+
+
+@app.route('/books', methods=['POST'])
+@auth.login_required
+def new_book():
+    title = request.json.get('title')
+    author = request.json.get('author')
+    isbn = request.json.get('isbn')
+    published_date = request.json.get('published_date')
+    user_id = g.user.id
+    print('***********************', title, author)
+    book = Book(title=title, author=author, isbn=isbn,
+                published_date=published_date, user_id=user_id)
+
+    db.session.add(book)
+    db.session.commit()
+
+    response = jsonify({
+        'id': book.id,
+        'title': book.title,
+        'author': book.author,
+        'isbn': book.isbn,
+        'published_date': book.published_date,
+        'book_created': book.book_created,
+        'user_id': g.user.id
+    })
+    response.status_code = 201
+    return response
+
+
 if __name__ == '__main__':
     if not os.path.exists('db.sqlite'):
         db.create_all()
     app.run(debug=True)
 
-# Test Body
-# POST = {"username":"parag3@gmail.com","password":"python3", "first_name":"parag3", "last_name":"shah3"}
-# PUT = Authenticated --> {"password":"python3", "first_name":"parag3", "last_name":"shah3"}
-# GET = Authenticated
+""" Test Body
+
+Books - 
+{"title": "Atomic Habits", "author": "Chetan", "isbn": "345-24445", "published_date": "Jan, 2021"}
+
+User - 
+# /v1/user = {"username":"parag@gmail.com","password":"Parag123@@@", "first_name":"parag", "last_name":"shah"}
+# /books = {"title": "Atomic Habits", "author": "Chetan", "isbn": "345-24445", "published_date": "Jan, 2021"}
+# /v1/user/self = Authenticated --> {"password":"python3", "first_name":"parag3", "last_name":"shah3"}
+# /v1/user/self = Authenticated
+
+"""
