@@ -200,11 +200,13 @@ def get_books():
 
 
 @app.route("/books/<id>", methods=["GET"])
-@auth.login_required
 def book_detail(id):
     book = Book.query.get(id)
-    print(g.user.id, '   -->  ', book.user_id)
-    return book_schema.jsonify(book)
+    if book is None:
+        return 'Not found', 404
+    else:
+        book = Book.query.get(id)
+        return book_schema.jsonify(book)
 
 
 @app.route("/books/<id>", methods=["DELETE"])
@@ -213,13 +215,12 @@ def book_delete(id):
     book = Book.query.get(id)
     if book is None:
         return 'Not found', 404
+    if g.user.id == book.user_id:
+        db.session.delete(book)
+        db.session.commit()
+        return book_schema.jsonify(book)
     else:
-        if g.user.id == book.user_id:
-            db.session.delete(book)
-            db.session.commit()
-            return book_schema.jsonify(book)
-        else:
-            return 'Unauthorized Access', 401
+        return 'Unauthorized Access', 401
 
 
 @app.route('/books', methods=['POST'])
@@ -230,6 +231,10 @@ def new_book():
     isbn = request.json.get('isbn')
     published_date = request.json.get('published_date')
     user_id = g.user.id
+
+    if title is None or author is None or isbn is None or published_date is None:
+        return "Please enter title, author, isbn and published_date", 400
+
     book = Book(title=title, author=author, isbn=isbn,
                 published_date=published_date, user_id=user_id)
 
@@ -243,7 +248,7 @@ def new_book():
         'isbn': book.isbn,
         'published_date': book.published_date,
         'book_created': book.book_created,
-        'user_id': g.user.id
+        'user_id': book.user_id
     })
     response.status_code = 201
     return response
