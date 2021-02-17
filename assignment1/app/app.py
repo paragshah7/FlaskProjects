@@ -65,19 +65,6 @@ class User(db.Model):
         user = User.query.get(data['username'])
         return user
 
-
-# books_list = [
-#     {
-#         "id": "d6193106-a192-46db-aae9-f151004ee453",
-#         "title": "Computer Networks",
-#         "author": "Andrew S. Tanenbaum",
-#         "isbn": "978-0132126953",
-#         "published_date": "May, 2020"
-#         # "book_created": "2016-08-29T09:12:33.001Z",
-#         # "user_id": "d290f1ee-6c54-4b01-90e6-d701748f0851"
-#     }
-# ]
-
 class Book(db.Model):
     __tablename__ = 'books'
 
@@ -216,6 +203,7 @@ def get_books():
 @auth.login_required
 def book_detail(id):
     book = Book.query.get(id)
+    print(g.user.id, '   -->  ', book.user_id)
     return book_schema.jsonify(book)
 
 
@@ -226,10 +214,12 @@ def book_delete(id):
     if book is None:
         return 'Not found', 404
     else:
-        print('**********      --> ', book)
-        db.session.delete(book)
-        db.session.commit()
-        return book_schema.jsonify(book)
+        if g.user.id == book.user_id:
+            db.session.delete(book)
+            db.session.commit()
+            return book_schema.jsonify(book)
+        else:
+            return 'Unauthorized Access', 401
 
 
 @app.route('/books', methods=['POST'])
@@ -240,7 +230,6 @@ def new_book():
     isbn = request.json.get('isbn')
     published_date = request.json.get('published_date')
     user_id = g.user.id
-    print('***********************', title, author)
     book = Book(title=title, author=author, isbn=isbn,
                 published_date=published_date, user_id=user_id)
 
